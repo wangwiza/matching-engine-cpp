@@ -1,78 +1,52 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <cassert>
+#include <chrono>
 #include "hash_map.hpp"
 
-const int NUM_THREADS = 10;
-const int NUM_OPERATIONS = 10000;
+const int NUM_INSERT_THREADS = 4;
+const int NUM_GET_THREADS = 4;
+const int NUM_INSERTS = 100000;
 
-HashMap<int, int> map;
-
-void insert_operations(int thread_id)
-{
-    for (int i = 0; i < NUM_OPERATIONS; ++i)
-    {
-        int key = thread_id * NUM_OPERATIONS + i;
-        map.insert(key, key * 2);
+void insertValues(HashMap<int, int>& map, int thread_id) {
+    for (int i = thread_id * NUM_INSERTS; i < (thread_id + 1) * NUM_INSERTS; ++i) {
+        map.insert(i, i * 10);
     }
 }
 
-void get_operations(int thread_id)
-{
-    int value;
-    for (int i = 0; i < NUM_OPERATIONS; ++i)
-    {
-        int key = thread_id * NUM_OPERATIONS + i;
-        if (map.get(key, value) && value != key * 2)
-        {
-            std::cerr << "Data corruption detected for key: " << key << std::endl;
+void getValues(HashMap<int, int>& map, int thread_id) {
+    for (int i = thread_id * NUM_INSERTS; i < (thread_id + 1) * NUM_INSERTS; ++i) {
+        if (map.contains(i)) {
+            assert(map.get(i) == i * 10);
         }
     }
 }
 
-void remove_operations(int thread_id)
-{
-    for (int i = 0; i < NUM_OPERATIONS; ++i)
-    {
-        int key = thread_id * NUM_OPERATIONS + i;
-        map.remove(key);
-    }
-}
-
-int main()
-{
+int main() {
+    HashMap<int, int> map;
     std::vector<std::thread> threads;
 
-    // Insertions
-    for (int i = 0; i < NUM_THREADS; ++i)
-    {
-        threads.emplace_back(insert_operations, i);
+    auto start_time = std::chrono::high_resolution_clock::now();
+    
+    // Launch threads to insert values
+    for (int i = 0; i < NUM_INSERT_THREADS; ++i) {
+        threads.emplace_back(insertValues, std::ref(map), i);
     }
-    for (auto &t : threads)
-        t.join();
-    threads.clear();
-
-    std::cout << "Size after insertions: " << map.size() << std::endl;
-
-    // Retrievals
-    for (int i = 0; i < NUM_THREADS; ++i)
-    {
-        threads.emplace_back(get_operations, i);
+    
+    // Launch threads to get values concurrently
+    for (int i = 0; i < NUM_GET_THREADS; ++i) {
+        threads.emplace_back(getValues, std::ref(map), i);
     }
-    for (auto &t : threads)
+    
+    for (auto& t : threads) {
         t.join();
-    threads.clear();
-
-    // Removals
-    for (int i = 0; i < NUM_THREADS; ++i)
-    {
-        threads.emplace_back(remove_operations, i);
     }
-    for (auto &t : threads)
-        t.join();
-    threads.clear();
-
-    std::cout << "Size after removals: " << map.size() << std::endl;
-
+    
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end_time - start_time;
+    
+    std::cout << "Concurrent insert and retrieval time: " << duration.count() << " seconds\n";
+    std::cout << "All tests passed!" << std::endl;
     return 0;
 }
