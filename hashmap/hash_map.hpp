@@ -5,6 +5,7 @@
 #include <vector>
 #include <shared_mutex>
 #include <mutex>
+#include <atomic>
 
 const size_t DEFAULT_INITIAL_SIZE = 100;
 const float DEFAULT_LOAD_FACTOR = 0.7f;
@@ -68,7 +69,7 @@ public:
 
     // Insert new pair
     buckets[index].emplace_back(key, value);
-    num_elements++;
+    num_elements.fetch_add(1, std::memory_order_seq_cst);
 
     // Check load factor
     if (static_cast<float>(num_elements) / static_cast<float>(buckets.size()) > max_load_factor)
@@ -79,7 +80,7 @@ public:
     }
   }
 
-  bool get(const K &key, V &value)
+  bool contains(const K &key)
   {
     std::shared_lock<std::shared_mutex> rehash_lock(rehash_mutex);
     size_t index = hash(key);
@@ -90,11 +91,27 @@ public:
     {
       if (pair.first == key)
       {
-        value = pair.second;
         return true;
       }
     }
     return false;
+  }
+
+  V &get(const K &key)
+  {
+    std::shared_lock<std::shared_mutex> rehash_lock(rehash_mutex);
+    size_t index = hash(key);
+    auto &m = bucket_mutexes[index];
+    std::shared_lock<std::shared_mutex> lock(m);
+
+    for (auto &pair : buckets[index])
+    {
+      if (pair.first == key)
+      {
+        return pair.second;
+      }
+    }
+    throw std::out_of_range("Key not found");
   }
 
   bool remove(const K &key)
@@ -111,7 +128,7 @@ public:
       if (it->first == key)
       {
         bucket.erase(it);
-        num_elements--;
+        num_elements.fetch_sub(1, std::memory_order_relaxed);
         return true;
       }
     }
