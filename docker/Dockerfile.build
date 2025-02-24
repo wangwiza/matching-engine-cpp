@@ -1,0 +1,23 @@
+FROM ubuntu:24.04
+
+# install dependencies
+RUN apt update && apt install -y clang-16 libc++-16-dev libc++abi-16-dev build-essential
+
+# QoL
+RUN apt update && apt install -y tmux wget git
+
+# create a symlink to clang-16
+RUN ln -s /usr/bin/clang-16 /usr/bin/clang
+RUN ln -s /usr/bin/clang++-16 /usr/bin/clang++
+
+USER ubuntu
+ENV HOME /home/ubuntu
+
+RUN wget https://raw.githubusercontent.com/Dethada/dotfiles/refs/heads/main/.tmux.conf -P $HOME
+# Remove the rebind to ^a
+RUN tail -n +6 $HOME/.tmux.conf > /tmp/.tmux.conf && mv /tmp/.tmux.conf $HOME/.tmux.conf
+
+RUN mkdir -p $HOME/workspace
+WORKDIR $HOME/workspace
+
+ENTRYPOINT ["/bin/bash"]
