@@ -16,7 +16,7 @@ private:
   using Bucket = std::list<std::pair<K, V>>;
   std::vector<Bucket> buckets;
   std::vector<std::shared_mutex> bucket_mutexes;
-  std::atomic<size_t> num_elements;
+  std::atomic<size_t> num_elements; // atomic to prevent data races, ordering doesn't matter as much
   float max_load_factor = DEFAULT_LOAD_FACTOR;
   std::shared_mutex rehash_mutex;
 
@@ -73,7 +73,7 @@ public:
     // Check load factor
     if (static_cast<float>(num_elements) / static_cast<float>(buckets.size()) > max_load_factor)
     {
-      lock.unlock();
+      lock.unlock(); // unlock before rehashing to prevent lock-order-inversion (potential deadlock)
       rehash_lock.unlock();
       rehash();
     }
