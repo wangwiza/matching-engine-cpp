@@ -101,9 +101,11 @@ public:
     delete tail;
   }
 
+  bool empty() const { return size.load() == 0; }
+
   // get the smallest element in the skip list
   T &get_head() const {
-    if (size.load() == 0) {
+    if (empty()) {
       throw std::out_of_range("Skip list is empty");
     }
     return head->next[0]->value;
@@ -111,7 +113,7 @@ public:
 
   // get the largest element in the skip list
   T &get_tail() const {
-    if (size.load() == 0) {
+    if (empty()) {
       throw std::out_of_range("Skip list is empty");
     }
     return tail->prev[0]->value;
