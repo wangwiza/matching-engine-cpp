@@ -81,9 +81,7 @@ private:
     return nullptr;
   }
 
-  uint32_t max_level_index() const {
-    return max_level - 1;
-  }
+  uint32_t max_level_index() const { return max_level - 1; }
 
 public:
   skip_list(uint32_t max_lvl = 64, Comp cmp = Comp())
@@ -169,7 +167,8 @@ public:
 
     for (uint32_t level = 0; level < target->next.size(); level++) {
       // once we see a nullptr, we can break, since the levels are contiguous
-      if (target->next[level] == nullptr) break;
+      if (target->next[level] == nullptr)
+        break;
       target->prev[level]->next[level] = target->next[level];
       target->next[level]->prev[level] = target->prev[level];
     }
@@ -191,8 +190,7 @@ public:
         else if (current->type == SENTINEL_TAIL) {
           std::cerr << "inf ";
           break;
-        }
-        else
+        } else
           std::cerr << current->value << " ";
         current = current->next[level];
       }

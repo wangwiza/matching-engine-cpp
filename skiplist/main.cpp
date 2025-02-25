@@ -1,9 +1,9 @@
 #include "skip_list.hpp"
-#include <iostream>
 #include <cassert>
+#include <functional>
+#include <iostream>
 #include <stdexcept>
 #include <string>
-#include <functional>
 
 // Test basic functionality
 void test_basic_operations() {
@@ -14,12 +14,14 @@ void test_basic_operations() {
   try {
     list.get_head();
     assert(false);
-  } catch(const std::out_of_range&) {}
+  } catch (const std::out_of_range &) {
+  }
 
   try {
     list.get_tail();
     assert(false);
-  } catch(const std::out_of_range&) {}
+  } catch (const std::out_of_range &) {
+  }
 
   // Add elements
   list.add(3);
@@ -42,11 +44,12 @@ void test_basic_operations() {
   try {
     list.get(5);
     assert(false);
-  } catch(const std::out_of_range&) {}
+  } catch (const std::out_of_range &) {
+  }
 
   // Remove elements
   assert(list.remove(2));
-  assert(!list.remove(2));  // Duplicate remove
+  assert(!list.remove(2)); // Duplicate remove
   assert(list.remove(1));
   assert(list.get_head() == 3);
   assert(list.get_tail() == 4);
@@ -91,9 +94,7 @@ void test_objects() {
   struct Person {
     std::string name;
     int age;
-    bool operator<(const Person& other) const {
-      return age < other.age;
-    }
+    bool operator<(const Person &other) const { return age < other.age; }
   };
 
   skip_list<Person> people;
