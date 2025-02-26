@@ -191,8 +191,6 @@ public:
 
     for (int64_t level = target->max_level_idx; level >= 0; level--) {
       assert(target->next[level].load() != nullptr);
-      /*if (target->next[level].load() == nullptr)*/
-      /*  continue;*/
 
       std::shared_ptr<Node> prev_node = get_preceding_node(value, level);
       std::shared_ptr<Node> next_node = target->next[level].load();
