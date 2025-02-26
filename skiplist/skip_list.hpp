@@ -95,7 +95,7 @@ private:
   }
 
   // Finds the preceding node of value in the skip list at the target_level
-  std::shared_ptr<Node> get_largest_smaller_node(const T &value,
+  std::shared_ptr<Node> get_preceding_node(const T &value,
                                                  uint32_t target_level) const {
     std::shared_ptr<Node> curr = head.load();
     std::shared_ptr<Node> next = nullptr;
@@ -163,12 +163,12 @@ public:
         std::make_shared<Node>(value, new_level, NORMAL);
 
     for (uint32_t level = 0; level <= new_level; level++) {
-      std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
+      std::shared_ptr<Node> prev_node = get_preceding_node(value, level);
       std::shared_ptr<Node> next_node = prev_node->next[level].load();
       new_node->next[level].store(next_node);
       while (
           !prev_node->next[level].compare_exchange_weak(next_node, new_node)) {
-        prev_node = get_largest_smaller_node(value, level);
+        prev_node = get_preceding_node(value, level);
         new_node->next[level].store(next_node);
       }
     }
@@ -181,10 +181,10 @@ public:
 
     for (int64_t level = target->max_level_idx; level >= 0; level--) {
       assert(target->next[level].load() != nullptr);
-      std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
+      std::shared_ptr<Node> prev_node = get_preceding_node(value, level);
       std::shared_ptr<Node> next_node = target->next[level].load();
       while (!prev_node->next[level].compare_exchange_weak(target, next_node)) {
-        prev_node = get_largest_smaller_node(value, level);
+        prev_node = get_preceding_node(value, level);
         next_node = target->next[level];
       }
     }
