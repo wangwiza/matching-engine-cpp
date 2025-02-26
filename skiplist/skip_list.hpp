@@ -5,30 +5,37 @@
 #include <functional>
 #include <iostream>
 #include <memory>
-#include <mutex>
 #include <ostream>
 #include <random>
-#include <shared_mutex>
 #include <stdexcept>
-#include <vector>
+
+// 64 should be enough for everyone since the ideal height of a skip list is
+// log(n)
+const uint32_t MAX_LEVEL = 64;
+const uint32_t MAX_LEVEL_INDEX = MAX_LEVEL - 1;
 
 template <typename T, typename Comp = std::less<T>> class skip_list {
 private:
   enum node_type { SENTINEL_HEAD, NORMAL, SENTINEL_TAIL };
 
   struct Node {
+    // safe concurrent access to value has to be handled by the user
     T value;
-    std::vector<std::shared_ptr<Node>> next;
+    std::atomic<std::shared_ptr<Node>> next[MAX_LEVEL];
+    // only written to at initialization so no need for atomic
     node_type type;
-    std::shared_mutex mutex;
 
-    explicit Node(T val, node_type type)
-        : value(val), next(), type(type) {}
+    explicit Node(T val, node_type type) : value(val), type(type) {
+      // Initialize the vector with max_level atomic shared_ptrs, each
+      // containing nullptr
+      for (uint32_t i = 0; i < MAX_LEVEL; i++) {
+        next[i].store(nullptr);
+      }
+    }
   };
 
-  uint32_t max_level;
-  std::shared_ptr<Node> head = std::make_shared<Node>(T(), SENTINEL_HEAD);
-  std::shared_ptr<Node> tail = std::make_shared<Node>(T(), SENTINEL_TAIL);
+  std::atomic<std::shared_ptr<Node>> head;
+  std::atomic<std::shared_ptr<Node>> tail;
   std::atomic<uint64_t> size;
   Comp comp;
 
@@ -42,7 +49,7 @@ private:
 
   uint32_t random_level() {
     uint32_t level = 0;
-    while (random_bool() && level < max_level_index())
+    while (random_bool() && level < MAX_LEVEL_INDEX)
       level++;
     return level;
   }
@@ -65,11 +72,11 @@ private:
   }
 
   std::shared_ptr<Node> get_node(const T &value) const {
-    std::shared_ptr<Node> current = head;
+    std::shared_ptr<Node> current = head.load();
     std::shared_ptr<Node> next = nullptr;
-    for (int64_t level = max_level_index(); level >= 0; level--) {
+    for (int64_t level = MAX_LEVEL_INDEX; level >= 0; level--) {
       // move right while not strictly less than value on the right
-      next = current->next[level];
+      next = current->next[level].load();
       while (next) {
         if (is_equal(value, next)) {
           return next;
@@ -78,7 +85,7 @@ private:
           break;
         }
         current = next;
-        next = current->next[level];
+        next = current->next[level].load();
       }
       // decrement level if current node is strictly less than value
     }
@@ -86,12 +93,13 @@ private:
   }
 
   // Finds the preceding node of value in the skip list at the target_level
-  std::shared_ptr<Node> get_largest_smaller_node(const T &value, uint32_t target_level) const {
-    std::shared_ptr<Node> curr = head;
+  std::shared_ptr<Node> get_largest_smaller_node(const T &value,
+                                                 uint32_t target_level) const {
+    std::shared_ptr<Node> curr = head.load();
     std::shared_ptr<Node> next = nullptr;
-    for (int64_t level = max_level_index(); level >= target_level; level--) {
+    for (int64_t level = MAX_LEVEL_INDEX; level >= target_level; level--) {
       // move right while not strictly less than value on the right
-      next = curr->next[level];
+      next = curr->next[level].load();
       while (next) {
         // it is possible for us to see the current value as the next value
         // since we are using this for remove as well
@@ -99,7 +107,7 @@ private:
           break;
         }
         curr = next;
-        next = curr->next[level];
+        next = curr->next[level].load();
       }
       // decrement level if current node is strictly less than value
     }
@@ -108,13 +116,17 @@ private:
     return curr;
   }
 
-  uint32_t max_level_index() const { return max_level - 1; }
-
 public:
-  skip_list(uint32_t max_lvl = 64, Comp cmp = Comp())
-      : max_level(max_lvl), comp(cmp) {
-    head->next.resize(max_level, tail);
-    tail->next.resize(max_level, nullptr);
+  skip_list(Comp cmp = Comp()) : comp(cmp) {
+    auto head_node = std::make_shared<Node>(T(), SENTINEL_HEAD);
+    auto tail_node = std::make_shared<Node>(T(), SENTINEL_TAIL);
+
+    for (uint32_t i = 0; i < MAX_LEVEL; ++i) {
+      head_node->next[i].store(tail_node);
+    }
+
+    head.store(std::move(head_node));
+    tail.store(std::move(tail_node));
   }
 
   bool empty() const { return size.load() == 0; }
@@ -124,33 +136,8 @@ public:
     if (empty()) {
       throw std::out_of_range("Skip list is empty");
     }
-    std::shared_ptr<Node> result = head->next[0];
-    std::shared_lock<std::shared_mutex> head_lock(result->mutex);
+    std::shared_ptr<Node> result = head.load()->next[0].load();
     return result->value;
-  }
-
-  void add(const T &value) {
-    uint32_t new_level = random_level();
-    std::shared_ptr<Node> new_node = std::make_shared<Node>(value, NORMAL);
-    new_node->next.resize(max_level);
-
-    // Now we have all the necessary write locks for nodes we need to modify
-    for (uint32_t level = 0; level <= new_level; level++) {
-      std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
-      std::shared_ptr<Node> next_node = prev_node->next[level];
-
-      // setup the node itself
-      new_node->next[level] = next_node;
-      prev_node->next[level] = new_node;
-    }
-
-    size.fetch_add(1);
-    // All locks will be automatically released when vectors go out of scope
-  }
-
-  bool contains(const T &value) const {
-    std::shared_ptr<Node> target = get_node(value);
-    return target != nullptr;
   }
 
   T &get(const T &value) const {
@@ -161,18 +148,45 @@ public:
     return target->value;
   }
 
+  bool contains(const T &value) const {
+    std::shared_ptr<Node> target = get_node(value);
+    return target != nullptr;
+  }
+
+  void add(const T &value) {
+    uint32_t new_level = random_level();
+    std::shared_ptr<Node> new_node = std::make_shared<Node>(value, NORMAL);
+
+    for (uint32_t level = 0; level <= new_level; level++) {
+      std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
+      std::shared_ptr<Node> next_node = prev_node->next[level].load();
+      new_node->next[level].store(next_node);
+      while (
+          !prev_node->next[level].compare_exchange_weak(next_node, new_node)) {
+        prev_node = get_largest_smaller_node(value, level);
+        new_node->next[level].store(next_node);
+      }
+    }
+
+    size.fetch_add(1);
+  }
+
   bool remove(const T &value) {
     std::shared_ptr<Node> target = get_node(value);
     if (!target)
       return false;
 
-    for (int64_t level = target->next.size() - 1; level >= 0; level--) {
+    for (int64_t level = MAX_LEVEL - 1; level >= 0; level--) {
       // we can skip the levels with nullptr
-      if (!target->next[level])
+      if (target->next[level].load() == nullptr)
         continue;
 
       std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
-      prev_node->next[level] = target->next[level];
+      std::shared_ptr<Node> next_node = target->next[level].load();
+      while (!prev_node->next[level].compare_exchange_weak(target, next_node)) {
+        prev_node = get_largest_smaller_node(value, level);
+        next_node = target->next[level];
+      }
     }
     // No need to delete target, shared_ptr will handle cleanup
     size.fetch_sub(1);
@@ -181,7 +195,7 @@ public:
 
   // for debugging purposes
   void display_internals() {
-    for (int64_t level = max_level_index(); level >= 0; level--) {
+    for (int64_t level = MAX_LEVEL_INDEX; level >= 0; level--) {
       std::shared_ptr<Node> current = head;
       if (head->next[level]->type == SENTINEL_TAIL)
         continue;
