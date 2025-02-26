@@ -36,7 +36,6 @@ private:
 
   std::atomic<std::shared_ptr<Node>> head;
   std::atomic<std::shared_ptr<Node>> tail;
-  std::atomic<uint64_t> size;
   Comp comp;
 
   bool random_bool() {
@@ -129,7 +128,7 @@ public:
     tail.store(std::move(tail_node));
   }
 
-  bool empty() const { return size.load() == 0; }
+  bool empty() const { return head.load()->next[0].load() == tail.load(); }
 
   // get the smallest element in the skip list
   T &get_head() const {
@@ -167,8 +166,6 @@ public:
         new_node->next[level].store(next_node);
       }
     }
-
-    size.fetch_add(1);
   }
 
   bool remove(const T &value) {
@@ -188,8 +185,6 @@ public:
         next_node = target->next[level];
       }
     }
-    // No need to delete target, shared_ptr will handle cleanup
-    size.fetch_sub(1);
     return true;
   }
 
