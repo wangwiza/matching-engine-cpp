@@ -22,10 +22,13 @@ private:
     // safe concurrent access to value has to be handled by the user
     T value;
     std::atomic<std::shared_ptr<Node>> next[MAX_LEVEL];
-    // only written to at initialization so no need for atomic
+    // following fields are only written to at initialization so no need for
+    // atomic
+    uint32_t max_level_idx;
     node_type type;
 
-    explicit Node(T val, node_type type) : value(val), type(type) {
+    explicit Node(T val, uint32_t lvl_idx, node_type type)
+        : value(val), max_level_idx(lvl_idx), type(type) {
       // Initialize the vector with max_level atomic shared_ptrs, each
       // containing nullptr
       for (uint32_t i = 0; i < MAX_LEVEL; i++) {
@@ -117,8 +120,10 @@ private:
 
 public:
   skip_list(Comp cmp = Comp()) : comp(cmp) {
-    auto head_node = std::make_shared<Node>(T(), SENTINEL_HEAD);
-    auto tail_node = std::make_shared<Node>(T(), SENTINEL_TAIL);
+    auto head_node =
+        std::make_shared<Node>(T(), MAX_LEVEL_INDEX, SENTINEL_HEAD);
+    auto tail_node =
+        std::make_shared<Node>(T(), MAX_LEVEL_INDEX, SENTINEL_TAIL);
 
     for (uint32_t i = 0; i < MAX_LEVEL; ++i) {
       head_node->next[i].store(tail_node);
@@ -154,7 +159,8 @@ public:
 
   void add(const T &value) {
     uint32_t new_level = random_level();
-    std::shared_ptr<Node> new_node = std::make_shared<Node>(value, NORMAL);
+    std::shared_ptr<Node> new_node =
+        std::make_shared<Node>(value, new_level, NORMAL);
 
     for (uint32_t level = 0; level <= new_level; level++) {
       std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
@@ -173,11 +179,8 @@ public:
     if (!target)
       return false;
 
-    for (int64_t level = MAX_LEVEL - 1; level >= 0; level--) {
-      // we can skip the levels with nullptr
-      if (target->next[level].load() == nullptr)
-        continue;
-
+    for (int64_t level = target->max_level_idx; level >= 0; level--) {
+      assert(target->next[level].load() != nullptr);
       std::shared_ptr<Node> prev_node = get_largest_smaller_node(value, level);
       std::shared_ptr<Node> next_node = target->next[level].load();
       while (!prev_node->next[level].compare_exchange_weak(target, next_node)) {
