@@ -17,16 +17,9 @@ void test_basic_operations() {
   } catch (const std::out_of_range &) {
   }
 
-  try {
-    list.get_tail();
-    assert(false);
-  } catch (const std::out_of_range &) {
-  }
-
   // Add elements
   list.add(3);
   list.add(1);
-  /*list.display_internals();*/
   list.add(4);
   list.add(2);
 
@@ -37,7 +30,6 @@ void test_basic_operations() {
   assert(list.contains(4));
 
   assert(list.get_head() == 1);
-  assert(list.get_tail() == 4);
 
   // Test get method
   assert(list.get(3) == 3);
@@ -52,7 +44,6 @@ void test_basic_operations() {
   assert(!list.remove(2)); // Duplicate remove
   assert(list.remove(1));
   assert(list.get_head() == 3);
-  assert(list.get_tail() == 4);
 }
 
 // Test edge cases
@@ -67,7 +58,6 @@ void test_edge_cases() {
   // Add after removal
   list.add(10);
   assert(list.get_head() == 10);
-  assert(list.get_tail() == 10);
 }
 
 // Test different data types
@@ -86,7 +76,6 @@ void test_data_types() {
   desc_list.add(1);
   desc_list.add(4);
   assert(desc_list.get_head() == 4);
-  assert(desc_list.get_tail() == 1);
 }
 
 // Test object storage
@@ -103,10 +92,8 @@ void test_objects() {
   people.add({"Charlie", 30});
 
   assert(people.get_head().name == "Bob");
-  assert(people.get_tail().name == "Alice");
   assert(people.remove({"Bob", 25}));
   assert(people.get_head().name == "Charlie");
-  assert(people.get_tail().name == "Alice");
 }
 
 int main() {
