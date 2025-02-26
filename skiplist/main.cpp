@@ -118,7 +118,7 @@ int32_t getRandomInt32() {
 void addValues(skip_list<int32_t> &list, int thread_id) {
   for (int i = 0; i < NUM_OPS; ++i) {
     int32_t value = getRandomInt32();
-    while (value == INT32_MIN) {
+    while (value == INT32_MIN || list.contains(value)) {
       value = getRandomInt32();
     }
     list.add(value);
@@ -128,6 +128,10 @@ void addValues(skip_list<int32_t> &list, int thread_id) {
 
 void get_head(skip_list<int32_t> &list, int thread_id) {
   for (int i = 0; i < NUM_OPS; ++i) {
+    while (list.empty()) {
+      // wait for adder threads to add some values
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
     int value = list.get_head();
     assert(value != INT32_MIN); // mainly to ensure value doesn't get optimized
                                 // out by compiler
@@ -165,9 +169,7 @@ int main() {
   }
 
   threads.clear();
-  if (!list.contains(INT32_MIN)) {
-    list.add(INT32_MIN);
-  }
+  list.add(INT32_MIN);
 
   for (int i = 0; i < NUM_INSERT_THREADS; ++i) {
     threads.push_back(std::thread(addValues, std::ref(list), i));
@@ -179,6 +181,25 @@ int main() {
   for (auto &thread : threads | std::views::reverse) {
     thread.join();
   }
+
+  uint32_t expected_size = (2 * NUM_INSERT_THREADS * NUM_OPS) + 1;
+  // ensure ordering is maintained
+  int32_t prev = INT32_MIN;
+  uint32_t count = 0;
+  while (!list.empty()) {
+    int32_t curr = list.get_head();
+    if (prev > curr) {
+      list.display(5);
+    }
+    assert(prev <= curr);
+    bool removed = list.remove(curr);
+    assert(removed);
+    prev = curr;
+    count++;
+  }
+  std::cout << "Expected size: " << expected_size << ", Actual size: " << count
+            << std::endl;
+  assert(count == expected_size);
 
   std::cout << "All tests passed!" << std::endl;
   return 0;
