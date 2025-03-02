@@ -168,4 +168,19 @@ public:
 
   size_t size() const { return num_elements; }
   bool empty() const { return num_elements == 0; }
+
+  // for debugging purposes
+  std::vector<K> keys()
+  {
+    std::unique_lock<std::shared_mutex> lock(rehash_mutex);
+    std::vector<K> keys;
+    for (const auto &bucket : buckets)
+    {
+      for (const auto &pair : bucket)
+      {
+        keys.push_back(pair.first);
+      }
+    }
+    return keys;
+  }
 };
