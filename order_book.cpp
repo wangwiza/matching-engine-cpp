@@ -112,9 +112,9 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
           book.get(order->instrument);
       bool removed = false;
       if (order->type == BUY) {
-        removed = instrument.second->remove(order);
-      } else {
         removed = instrument.first->remove(order);
+      } else {
+        removed = instrument.second->remove(order);
       }
       // removal should always be successful
       assert(removed);
