@@ -13,7 +13,7 @@ enum order_type { BUY, SELL };
 class order {
 public:
   uintmax_t id;
-  const char *instrument;
+  std::string instrument;
   uintmax_t price;
   uintmax_t count;
   order_type type;
@@ -25,8 +25,8 @@ public:
 
   order(uintmax_t id, const char *instrument, uintmax_t price, uintmax_t count,
         order_type type, uintmax_t timestamp)
-      : id(id), instrument(instrument), price(price), count(count), type(type),
-        timestamp(timestamp), execution_id(1), cancelled(false),
+      : id(id), instrument(std::string(instrument)), price(price), count(count),
+        type(type), timestamp(timestamp), execution_id(1), cancelled(false),
         resting(false) {}
 
   bool available() { return (!cancelled) && count > 0; }
@@ -66,15 +66,16 @@ using max_sl = skip_list<std::shared_ptr<order>, MaxPriceComparator>;
 class order_book {
 private:
   // max_pq for buy orders, min_pq for sell orders
-  HashMap<const char *,
+  HashMap<std::string,
           std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>>>
       book;
 
 public:
   void add_order(std::shared_ptr<order> order);
-  void add_instrument(const char *instrument);
-  bool instrument_exists(const char *instrument);
+  void add_instrument(const std::string &instrument);
+  bool instrument_exists(const std::string &instrument);
   void find_match(std::shared_ptr<order> active_order);
   void cancel_order(std::shared_ptr<order> order);
-  void print_top(std::shared_ptr<order> order);
+  void print_instr_top(const std::string &instrument_str);
+  void print_all_top();
 };
