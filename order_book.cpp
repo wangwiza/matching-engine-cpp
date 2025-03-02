@@ -25,16 +25,17 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
 }
 
 void order_book::add_order(std::shared_ptr<order> active_order) {
-  std::pair<max_sl, min_sl> instrument = book.get(active_order->instrument);
-  add_order_helper(active_order->type == BUY ? instrument->second.first
-                                             : instrument->second.second,
-                   active_order);
+  std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
+      book.get(active_order->instrument);
+  if (active_order->type == BUY) {
+    add_order_helper(*instrument.first, active_order);
+  } else {
+    add_order_helper(*instrument.second, active_order);
+  }
 }
 
 template <typename SL>
 bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
-  // maintain an invariant that if an order is in the pq, it is available
-  // meaning, count > 0 and not cancelled
   while (active_order->available() && !sl.empty()) {
     std::shared_ptr<order> best_order = sl.get_head();
     // price is read-only, so we don't need to lock the best order
@@ -43,6 +44,13 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
     }
 
     std::unique_lock<std::mutex> bo_wlock(best_order->mutex);
+    // we have to check if the best order is still available
+    // since between the time where we decide to fight for
+    // this order's write lock and now, this order could have
+    // become unavailabe
+    if (!best_order->available()) {
+      continue;
+    }
     // instant at which the AO was matched with the best order and
     // the order book was updated
     uintmax_t output_time = getCurrentTimestamp();
@@ -57,7 +65,10 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
 
     assert(best_order->count >= 0);
     if (best_order->count == 0) {
-      sl.remove(best_order);
+      // this should succeed since we are the first
+      // to see count == 0
+      bool removed = sl.remove(best_order);
+      assert(removed);
     }
   }
 
@@ -67,16 +78,18 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
 
 void order_book::find_match(std::shared_ptr<order> active_order) {
   if (!book.contains(active_order->instrument)) {
-    book.try_insert(active_order->instrument,
-                    std::make_pair(max_sl{}, min_sl{}));
+    book.try_insert(
+        active_order->instrument,
+        std::make_pair(std::make_shared<max_sl>(), std::make_shared<min_sl>()));
   }
 
-  std::pair<max_sl, min_sl> instrument = book.get(active_order->instrument);
+  std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
+      book.get(active_order->instrument);
   bool fully_filled = false;
   if (active_order->type == SELL) {
-    fully_filled = try_fill_order(instrument.first, active_order);
+    fully_filled = try_fill_order(*instrument.first, active_order);
   } else {
-    fully_filled = try_fill_order(instrument.second, active_order);
+    fully_filled = try_fill_order(*instrument.second, active_order);
   }
 
   // turn the AO into a RO
@@ -95,12 +108,16 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
     // remove the order from the order book
     // if it is already a resting order
     if (order->resting) {
-      std::pair<max_sl, min_sl> instrument = book.get(order->instrument);
+      std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
+          book.get(order->instrument);
+      bool removed = false;
       if (order->type == BUY) {
-        instrument.second.remove(order);
+        removed = instrument.second->remove(order);
       } else {
-        instrument.first.remove(order);
+        removed = instrument.first->remove(order);
       }
+      // removal should always be successful
+      assert(removed);
     }
   }
   // instant that cancel was accepted or rejected
@@ -113,17 +130,18 @@ void order_book::print_top(std::shared_ptr<order> order) {
     std::cerr << "instrument not found: " << order->instrument << std::endl;
     return;
   }
-  std::pair<max_sl, min_sl> instrument = book.get(order->instrument);
-  max_sl &max_pq = instrument.second.first;
-  if (max_pq.empty()) {
+  std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
+      book.get(order->instrument);
+  std::shared_ptr<max_sl> max_pq = instrument.first;
+  if (max_pq->empty()) {
     std::cerr << "instrument is empty" << std::endl;
     return;
   }
-  std::cerr << "instrument BUY top: " << max_pq.get_head() << std::endl;
-  min_sl &min_pq = instrument.second.second;
-  if (min_pq.empty()) {
+  std::cerr << "instrument BUY top: " << max_pq->get_head() << std::endl;
+  std::shared_ptr<min_sl> min_pq = instrument.second;
+  if (min_pq->empty()) {
     std::cerr << "instrument is empty" << std::endl;
     return;
   }
-  std::cerr << "instrument SELL top: " << min_pq.get_head() << std::endl;
+  std::cerr << "instrument SELL top: " << min_pq->get_head() << std::endl;
 }

@@ -60,13 +60,11 @@ void Engine::connection_thread(ClientConnection connection) {
        * "*/
       /*           << input.instrument << " x " << input.count << " @ "*/
       /*           << input.price << " ID: " << input.order_id << std::endl;*/
-      order active_order = {input.order_id,
-                            input.instrument,
-                            input.price,
-                            input.count,
-                            input.type == input_sell ? SELL : BUY,
-                            static_cast<uintmax_t>(getCurrentTimestamp())};
-      std::shared_ptr<order> ptr = std::make_shared<order>(active_order);
+      auto order_type = input.type == input_sell ? SELL : BUY;
+      auto timestamp = static_cast<uintmax_t>(getCurrentTimestamp());
+      std::shared_ptr<order> ptr =
+          std::make_shared<order>(input.order_id, input.instrument, input.price,
+                                  input.count, order_type, timestamp);
       client_orders[input.order_id] = ptr;
       order_book.find_match(ptr);
       break;

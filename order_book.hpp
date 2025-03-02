@@ -66,7 +66,9 @@ using max_sl = skip_list<std::shared_ptr<order>, MaxPriceComparator>;
 class order_book {
 private:
   // max_pq for buy orders, min_pq for sell orders
-  HashMap<const char *, std::pair<max_sl, min_sl>> book;
+  HashMap<const char *,
+          std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>>>
+      book;
 
 public:
   void add_order(std::shared_ptr<order> order);
