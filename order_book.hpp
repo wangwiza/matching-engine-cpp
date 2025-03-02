@@ -43,7 +43,7 @@ public:
 struct MinPriceComparator {
   bool operator()(std::shared_ptr<order> a, std::shared_ptr<order> b) const {
     if (a->price == b->price) {
-      return a->timestamp > b->timestamp;
+      return a->timestamp < b->timestamp;
     }
     return a->price < b->price;
   }
@@ -53,7 +53,7 @@ struct MinPriceComparator {
 struct MaxPriceComparator {
   bool operator()(std::shared_ptr<order> a, std::shared_ptr<order> b) const {
     if (a->price == b->price) {
-      return a->timestamp > b->timestamp;
+      return a->timestamp < b->timestamp;
     }
     return a->price > b->price;
   }
