@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <mutex>
 #include <atomic>
+#include <stdexcept>
 
 const size_t DEFAULT_INITIAL_SIZE = 100;
 const float DEFAULT_LOAD_FACTOR = 0.7f;

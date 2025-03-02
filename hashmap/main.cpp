@@ -5,7 +5,6 @@
 #include <vector>
 #include <random>
 #include <limits>
-#include <stdexcept>
 #include <string>
 
 // Test basic operations: insert, update, get, and remove.
