@@ -125,23 +125,35 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
   Output::OrderDeleted(order->id, accepted, output_time);
 }
 
-void order_book::print_top(std::shared_ptr<order> order) {
-  if (!book.contains(order->instrument)) {
-    std::cerr << "instrument not found: " << order->instrument << std::endl;
+void order_book::print_instr_top(const std::string &instrument_str) {
+  if (!book.contains(instrument_str)) {
+    std::cerr << "instrument not found: " << instrument_str << std::endl;
     return;
   }
   std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
-      book.get(order->instrument);
+      book.get(instrument_str);
   std::shared_ptr<max_sl> max_pq = instrument.first;
   if (max_pq->empty()) {
-    std::cerr << "instrument is empty" << std::endl;
-    return;
+    std::cerr << instrument_str << " BUY  top: empty" << std::endl;
+  } else {
+    std::cerr << instrument_str << " BUY  top: " << *max_pq->get_head()
+              << std::endl;
   }
-  std::cerr << "instrument BUY top: " << max_pq->get_head() << std::endl;
   std::shared_ptr<min_sl> min_pq = instrument.second;
   if (min_pq->empty()) {
-    std::cerr << "instrument is empty" << std::endl;
-    return;
+    std::cerr << instrument_str << " SELL top: empty" << std::endl;
+  } else {
+    std::cerr << instrument_str << " SELL top: " << *min_pq->get_head()
+              << std::endl;
   }
-  std::cerr << "instrument SELL top: " << min_pq->get_head() << std::endl;
+}
+
+void order_book::print_all_top() {
+  std::vector<std::string> instruments = book.keys();
+  std::cerr << "===============================" << std::endl;
+  std::cerr << "Printing top of all instruments" << std::endl;
+  for (const std::string &instrument : instruments) {
+    print_instr_top(instrument);
+  }
+  std::cerr << "===============================" << std::endl;
 }
