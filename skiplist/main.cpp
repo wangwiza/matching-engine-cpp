@@ -160,6 +160,37 @@ void test_max_order_sl() {
   assert(max_sl.empty());
 }
 
+void test_order_sl_timestamp() {
+  std::vector<std::shared_ptr<order>> orders;
+  orders.push_back(std::make_shared<order>(1, "AAPL", 5, 10, SELL, 10));
+  orders.push_back(std::make_shared<order>(2, "AAPL", 5, 10, SELL, 20));
+  orders.push_back(std::make_shared<order>(3, "AAPL", 5, 10, SELL, 30));
+  orders.push_back(std::make_shared<order>(4, "AAPL", 5, 10, SELL, 40));
+  orders.push_back(std::make_shared<order>(5, "AAPL", 5, 10, SELL, 50));
+
+  min_sl min_sl;
+  max_sl max_sl;
+  for (auto &order : orders | std::views::reverse) {
+    min_sl.add(order);
+    max_sl.add(order);
+  }
+
+  for (auto &order : orders) {
+    assert(min_sl.contains(order));
+    assert(max_sl.contains(order));
+  }
+
+  assert(!min_sl.contains(std::make_shared<order>(6, "AAPL", 5, 10, SELL, 25)));
+  assert(!max_sl.contains(std::make_shared<order>(6, "AAPL", 5, 10, SELL, 25)));
+
+  for (size_t i = 0; i < orders.size(); i++) {
+    assert(min_sl.get_head()->timestamp == orders[i]->timestamp);
+    assert(max_sl.get_head()->timestamp == orders[i]->timestamp);
+    assert(min_sl.remove(orders[i]));
+    assert(max_sl.remove(orders[i]));
+  }
+}
+
 // Test concurrent insertions and retrievals
 
 const int NUM_INSERT_THREADS = 4;
@@ -216,6 +247,7 @@ int main() {
   test_objects();
   test_min_order_sl();
   test_max_order_sl();
+  test_order_sl_timestamp();
 
   std::vector<std::thread> threads;
   skip_list<int32_t> list;
