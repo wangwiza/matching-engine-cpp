@@ -6,6 +6,7 @@
 #include <mutex>
 #include <ostream>
 #include <shared_mutex>
+#include <stdexcept>
 
 enum order_type { BUY, SELL };
 
@@ -44,7 +45,7 @@ struct MinPriceComparator {
     if (a->price == b->price) {
       return a->timestamp > b->timestamp;
     }
-    return a->price > b->price;
+    return a->price < b->price;
   }
 };
 
@@ -54,7 +55,7 @@ struct MaxPriceComparator {
     if (a->price == b->price) {
       return a->timestamp > b->timestamp;
     }
-    return a->price < b->price;
+    return a->price > b->price;
   }
 };
 
