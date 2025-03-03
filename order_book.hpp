@@ -2,6 +2,7 @@
 
 #include "hashmap/hash_map.hpp"
 #include "skiplist/skip_list.hpp"
+#include "sl_bridge.hpp"
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -63,12 +64,21 @@ struct MaxPriceComparator {
 using min_sl = skip_list<std::shared_ptr<order>, MinPriceComparator>;
 using max_sl = skip_list<std::shared_ptr<order>, MaxPriceComparator>;
 
+class instrument {
+public:
+  std::shared_ptr<max_sl> buy_sl;
+  std::shared_ptr<min_sl> sell_sl;
+  std::shared_ptr<sl_bridge> bridge;
+
+  instrument()
+      : buy_sl(std::make_shared<max_sl>()), sell_sl(std::make_shared<min_sl>()),
+        bridge(std::make_shared<sl_bridge>()) {}
+};
+
 class order_book {
 private:
   // max_pq for buy orders, min_pq for sell orders
-  HashMap<std::string,
-          std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>>>
-      book;
+  HashMap<std::string, std::shared_ptr<instrument>> book;
 
 public:
   void add_order(std::shared_ptr<order> order);

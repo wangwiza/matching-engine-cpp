@@ -2,6 +2,7 @@
 #include "engine.hpp"
 #include "io.hpp"
 #include <cassert>
+#include <cstdint>
 
 bool price_matched(std::shared_ptr<order> active_order,
                    std::shared_ptr<order> best_order) {
@@ -20,17 +21,17 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
   order->resting = true;
   // the instant at which the order was added to the order book
   uintmax_t output_time = getCurrentTimestamp();
+  order->timestamp = output_time;
   pq.add(order);
   Output::OrderAdded(id, instrument, price, count, is_sell, output_time);
 }
 
 void order_book::add_order(std::shared_ptr<order> active_order) {
-  std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
-      book.get(active_order->instrument);
+  std::shared_ptr<instrument> instrument = book.get(active_order->instrument);
   if (active_order->type == BUY) {
-    add_order_helper(*instrument.first, active_order);
+    add_order_helper(*instrument->buy_sl, active_order);
   } else {
-    add_order_helper(*instrument.second, active_order);
+    add_order_helper(*instrument->sell_sl, active_order);
   }
 }
 
@@ -78,23 +79,28 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
 
 void order_book::find_match(std::shared_ptr<order> active_order) {
   if (!book.contains(active_order->instrument)) {
-    book.try_insert(
-        active_order->instrument,
-        std::make_pair(std::make_shared<max_sl>(), std::make_shared<min_sl>()));
+    book.try_insert(active_order->instrument, std::make_shared<instrument>());
   }
 
-  std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
-      book.get(active_order->instrument);
+  std::shared_ptr<instrument> instrument = book.get(active_order->instrument);
+  std::shared_ptr<sl_bridge> bridge = instrument->bridge;
   bool fully_filled = false;
   if (active_order->type == SELL) {
-    fully_filled = try_fill_order(*instrument.first, active_order);
+    bridge->enter_sell();
+    fully_filled = try_fill_order(*instrument->buy_sl, active_order);
   } else {
-    fully_filled = try_fill_order(*instrument.second, active_order);
+    bridge->enter_buy();
+    fully_filled = try_fill_order(*instrument->sell_sl, active_order);
   }
 
   // turn the AO into a RO
   if (!fully_filled) {
     add_order(active_order);
+  }
+  if (active_order->type == SELL) {
+    bridge->exit_sell();
+  } else {
+    bridge->exit_buy();
   }
 }
 
@@ -109,14 +115,13 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
     // remove the order from the order book
     // if it is already a resting order
     if (order->resting) {
-      std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
-          book.get(order->instrument);
+      std::shared_ptr<instrument> instrument = book.get(order->instrument);
       bool removed = false;
       output_time = getCurrentTimestamp();
       if (order->type == BUY) {
-        removed = instrument.first->remove(order);
+        removed = instrument->buy_sl->remove(order);
       } else {
-        removed = instrument.second->remove(order);
+        removed = instrument->sell_sl->remove(order);
       }
       // removal should always be successful
       assert(removed);
@@ -131,16 +136,15 @@ void order_book::print_instr_top(const std::string &instrument_str) {
     std::cerr << "instrument not found: " << instrument_str << std::endl;
     return;
   }
-  std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
-      book.get(instrument_str);
-  std::shared_ptr<max_sl> max_pq = instrument.first;
+  std::shared_ptr<instrument> instrument = book.get(instrument_str);
+  std::shared_ptr<max_sl> max_pq = instrument->buy_sl;
   if (max_pq->empty()) {
     std::cerr << instrument_str << " BUY  top: empty" << std::endl;
   } else {
     std::cerr << instrument_str << " BUY  top: " << *max_pq->get_head()
               << std::endl;
   }
-  std::shared_ptr<min_sl> min_pq = instrument.second;
+  std::shared_ptr<min_sl> min_pq = instrument->sell_sl;
   if (min_pq->empty()) {
     std::cerr << instrument_str << " SELL top: empty" << std::endl;
   } else {
