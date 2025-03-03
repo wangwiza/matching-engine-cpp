@@ -7,6 +7,8 @@ from pprint import pprint
 from string import ascii_lowercase
 import os
 
+MAX_SEED = 2**32
+
 def generate_large_test_file(seed, filename, num_threads, num_operations):
     random.seed(seed)
 
@@ -79,7 +81,7 @@ def run_till_error(test_file, num_threads, num_ops):
     while True:
         grader_stdout, grader_stderr = run_grader_on_test_file(test_file)
 
-        if grader_stderr.strip() != 'test passed.':
+        if not grader_stderr.strip().endswith('test passed.'):
             print(f"Error detected! Runs: {count}")
             print(f"Grader STDOUT:\n{grader_stdout}")
             print(f"Grader STDERR:\n{grader_stderr}")
@@ -95,7 +97,7 @@ def run_forever(test_file, output_file, num_threads, num_ops):
 
     while True:
         # Generate a random seed for reproducibility
-        seed = random.randint(1, 2**32)
+        seed = random.randint(1, MAX_SEED)
         generate_large_test_file(seed, test_file, num_threads=num_threads,
                                                     num_operations=num_ops)
 
@@ -103,7 +105,7 @@ def run_forever(test_file, output_file, num_threads, num_ops):
         _, grader_stderr = run_grader_on_test_file(test_file)
 
         # Check if there was an error in grader output
-        if grader_stderr.strip() != 'test passed.':
+        if not grader_stderr.strip().endswith('test passed.'):
             raw_error_count += 1
             if grader_stderr in errors:
                 continue
@@ -119,6 +121,10 @@ def get_rand_filpath():
     return f"/tmp/{rand_filename}.in"
 
 def main(args):
+    if args.gen_file:
+        generate_large_test_file(args.seed, args.output_file, args.num_threads, args.num_ops)
+        exit(0)
+
     test_file = get_rand_filpath()
     while os.path.exists(test_file):
         test_file = get_rand_filpath()
@@ -143,6 +149,7 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, help="If provided, run once with the given seed.")
     parser.add_argument("--num_threads", type=int, default=40, help="Number of client threads.")
     parser.add_argument("--num_ops", type=int, default=500, help="Number of operations to generate.")
+    parser.add_argument("--gen_file", type=bool, default=False, help="Generate a test file and exit.")
     args = parser.parse_args()
     main(args)
 
