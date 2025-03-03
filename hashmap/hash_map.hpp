@@ -100,7 +100,7 @@ public:
 
     // Insert new pair
     buckets[index].emplace_back(key, value);
-    num_elements.fetch_add(1, std::memory_order_seq_cst);
+    num_elements.fetch_add(1, std::memory_order_acq_rel);
 
     // Check load factor
     if (static_cast<float>(num_elements) / static_cast<float>(buckets.size()) > max_load_factor)
