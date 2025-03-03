@@ -38,7 +38,15 @@ void order_book::add_order(std::shared_ptr<order> active_order) {
 template <typename SL>
 bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
   while (active_order->available() && !sl.empty()) {
-    std::shared_ptr<order> best_order = sl.get_head();
+    std::shared_ptr<order> best_order;
+    try {
+      best_order = sl.get_head();
+    } catch (std::out_of_range &e) {
+      // this may happen since there is time between
+      // the time we check if the SL is empty and the
+      // time we actually get the head
+      break;
+    }
     // price is read-only, so we don't need to lock the best order
     if (!price_matched(active_order, best_order)) {
       break;
