@@ -18,9 +18,9 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
   auto is_sell = order->type == SELL;
   assert(count > 0 && !order->cancelled);
   order->resting = true;
-  pq.add(order);
   // the instant at which the order was added to the order book
   uintmax_t output_time = getCurrentTimestamp();
+  pq.add(order);
   Output::OrderAdded(id, instrument, price, count, is_sell, output_time);
 }
 
@@ -102,6 +102,7 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
   bool accepted = false;
   // need to lock in case the order has become an resting order
   std::unique_lock<std::mutex> wlock(order->mutex);
+  intmax_t output_time = getCurrentTimestamp();
   if (order->available()) {
     order->cancelled = true;
     accepted = true;
@@ -111,6 +112,7 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
       std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>> instrument =
           book.get(order->instrument);
       bool removed = false;
+      output_time = getCurrentTimestamp();
       if (order->type == BUY) {
         removed = instrument.first->remove(order);
       } else {
@@ -121,7 +123,6 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
     }
   }
   // instant that cancel was accepted or rejected
-  auto output_time = getCurrentTimestamp();
   Output::OrderDeleted(order->id, accepted, output_time);
 }
 
