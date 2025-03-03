@@ -1,3 +1,5 @@
+# run this script in the scripts directory
+
 import random
 import subprocess
 
