@@ -1,4 +1,4 @@
-#include "skip_list.hpp"
+#include "../order_book.hpp"
 #include <cassert>
 #include <functional>
 #include <iostream>
@@ -98,6 +98,99 @@ void test_objects() {
   assert(people.get_head().name == "Charlie");
 }
 
+void test_min_order_sl() {
+  std::vector<std::shared_ptr<order>> orders;
+  orders.push_back(std::make_shared<order>(1, "AAPL", 1, 10, SELL, 1));
+  orders.push_back(std::make_shared<order>(2, "AAPL", 3, 10, SELL, 1));
+  orders.push_back(std::make_shared<order>(3, "AAPL", 5, 10, SELL, 1));
+  orders.push_back(std::make_shared<order>(4, "AAPL", 7, 10, SELL, 1));
+  orders.push_back(std::make_shared<order>(5, "AAPL", 9, 10, SELL, 1));
+
+  min_sl min_sl;
+  for (auto &order : orders) {
+    min_sl.add(order);
+  }
+
+  for (auto &order : orders) {
+    assert(min_sl.contains(order));
+  }
+
+  assert(!min_sl.contains(std::make_shared<order>(6, "AAPL", 8, 10, SELL, 1)));
+
+  assert(min_sl.get_head()->price == 1);
+  assert(min_sl.remove(orders[0]));
+  assert(min_sl.get_head()->price == 3);
+  assert(min_sl.remove(orders[1]));
+  assert(min_sl.get_head()->price == 5);
+  assert(min_sl.remove(orders[2]));
+  assert(min_sl.get_head()->price == 7);
+  assert(min_sl.remove(orders[3]));
+  assert(min_sl.get_head()->price == 9);
+}
+
+void test_max_order_sl() {
+  std::vector<std::shared_ptr<order>> orders;
+  orders.push_back(std::make_shared<order>(1, "AAPL", 1, 10, BUY, 1));
+  orders.push_back(std::make_shared<order>(2, "AAPL", 3, 10, BUY, 1));
+  orders.push_back(std::make_shared<order>(3, "AAPL", 5, 10, BUY, 1));
+  orders.push_back(std::make_shared<order>(4, "AAPL", 7, 10, BUY, 1));
+  orders.push_back(std::make_shared<order>(5, "AAPL", 9, 10, BUY, 1));
+
+  max_sl max_sl;
+  for (auto &order : orders) {
+    max_sl.add(order);
+  }
+
+  for (auto &order : orders) {
+    assert(max_sl.contains(order));
+  }
+
+  assert(!max_sl.contains(std::make_shared<order>(6, "AAPL", 8, 10, BUY, 1)));
+
+  assert(max_sl.get_head()->price == 9);
+  assert(max_sl.remove(orders[4]));
+  assert(max_sl.get_head()->price == 7);
+  assert(max_sl.remove(orders[3]));
+  assert(max_sl.get_head()->price == 5);
+  assert(max_sl.remove(orders[2]));
+  assert(max_sl.get_head()->price == 3);
+  assert(max_sl.remove(orders[1]));
+  assert(max_sl.get_head()->price == 1);
+  assert(max_sl.remove(orders[0]));
+  assert(max_sl.empty());
+}
+
+void test_order_sl_timestamp() {
+  std::vector<std::shared_ptr<order>> orders;
+  orders.push_back(std::make_shared<order>(1, "AAPL", 5, 10, SELL, 10));
+  orders.push_back(std::make_shared<order>(2, "AAPL", 5, 10, SELL, 20));
+  orders.push_back(std::make_shared<order>(3, "AAPL", 5, 10, SELL, 30));
+  orders.push_back(std::make_shared<order>(4, "AAPL", 5, 10, SELL, 40));
+  orders.push_back(std::make_shared<order>(5, "AAPL", 5, 10, SELL, 50));
+
+  min_sl min_sl;
+  max_sl max_sl;
+  for (auto &order : orders | std::views::reverse) {
+    min_sl.add(order);
+    max_sl.add(order);
+  }
+
+  for (auto &order : orders) {
+    assert(min_sl.contains(order));
+    assert(max_sl.contains(order));
+  }
+
+  assert(!min_sl.contains(std::make_shared<order>(6, "AAPL", 5, 10, SELL, 25)));
+  assert(!max_sl.contains(std::make_shared<order>(6, "AAPL", 5, 10, SELL, 25)));
+
+  for (size_t i = 0; i < orders.size(); i++) {
+    assert(min_sl.get_head()->timestamp == orders[i]->timestamp);
+    assert(max_sl.get_head()->timestamp == orders[i]->timestamp);
+    assert(min_sl.remove(orders[i]));
+    assert(max_sl.remove(orders[i]));
+  }
+}
+
 // Test concurrent insertions and retrievals
 
 const int NUM_INSERT_THREADS = 4;
@@ -152,6 +245,9 @@ int main() {
   test_edge_cases();
   test_data_types();
   test_objects();
+  test_min_order_sl();
+  test_max_order_sl();
+  test_order_sl_timestamp();
 
   std::vector<std::thread> threads;
   skip_list<int32_t> list;

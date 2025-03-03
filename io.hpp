@@ -104,7 +104,7 @@ class Output
 {
 public:
 	inline static void
-	OrderAdded(uint32_t id, const char* symbol, uint32_t price, uint32_t count, bool is_sell_side, intmax_t output_timestamp)
+	OrderAdded(uint32_t id, std::string symbol, uint32_t price, uint32_t count, bool is_sell_side, intmax_t output_timestamp)
 	{
 		SyncCout()
 		    << (is_sell_side ? "S " : "B ") //

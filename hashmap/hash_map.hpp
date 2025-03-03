@@ -6,6 +6,7 @@
 #include <shared_mutex>
 #include <mutex>
 #include <atomic>
+#include <stdexcept>
 
 const size_t DEFAULT_INITIAL_SIZE = 100;
 const float DEFAULT_LOAD_FACTOR = 0.7f;
@@ -69,7 +70,37 @@ public:
 
     // Insert new pair
     buckets[index].emplace_back(key, value);
-    num_elements.fetch_add(1, std::memory_order_seq_cst);
+    num_elements.fetch_add(1, std::memory_order_acq_rel);
+
+    // Check load factor
+    if (static_cast<float>(num_elements) / static_cast<float>(buckets.size()) > max_load_factor)
+    {
+      lock.unlock(); // unlock before rehashing to prevent lock-order-inversion (potential deadlock)
+      rehash_lock.unlock();
+      rehash();
+    }
+  }
+
+  // Inserts only if key doesn't exist
+  void try_insert(const K &key, const V &value)
+  {
+    std::shared_lock<std::shared_mutex> rehash_lock(rehash_mutex);
+    size_t index = hash(key);
+    auto &m = bucket_mutexes[index];
+    std::unique_lock<std::shared_mutex> lock(m);
+
+    // Check for existing key
+    for (auto &pair : buckets[index])
+    {
+      if (pair.first == key)
+      {
+        return;
+      }
+    }
+
+    // Insert new pair
+    buckets[index].emplace_back(key, value);
+    num_elements.fetch_add(1, std::memory_order_acq_rel);
 
     // Check load factor
     if (static_cast<float>(num_elements) / static_cast<float>(buckets.size()) > max_load_factor)
@@ -137,4 +168,19 @@ public:
 
   size_t size() const { return num_elements; }
   bool empty() const { return num_elements == 0; }
+
+  // for debugging purposes
+  std::vector<K> keys()
+  {
+    std::unique_lock<std::shared_mutex> lock(rehash_mutex);
+    std::vector<K> keys;
+    for (const auto &bucket : buckets)
+    {
+      for (const auto &pair : bucket)
+      {
+        keys.push_back(pair.first);
+      }
+    }
+    return keys;
+  }
 };
