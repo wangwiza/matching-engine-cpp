@@ -19,6 +19,7 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
   auto is_sell = order->type == SELL;
   assert(count > 0 && !order->cancelled);
   // the instant at which the order was added to the order book
+  std::shared_lock<std::shared_mutex> pq_rlock(pq.mutex);
   uintmax_t output_time = getCurrentTimestamp();
   order->timestamp = output_time;
   pq.add(order);
@@ -38,6 +39,7 @@ template <typename SL>
 bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
   while (active_order->available() && !sl.empty()) {
     std::shared_ptr<order> best_order;
+    std::unique_lock<std::shared_mutex> sl_wlock(sl.mutex);
     try {
       best_order = sl.get_head();
     } catch (std::out_of_range &e) {
@@ -123,9 +125,11 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
     // if it is already a resting order
     std::shared_ptr<instrument> instrument = book.get(order->instrument);
     if (order->type == BUY && instrument->buy_sl->contains(order)) {
+      std::shared_lock<std::shared_mutex> sl_rlock(instrument->buy_sl->mutex);
       output_time = getCurrentTimestamp();
       instrument->buy_sl->remove(order);
     } else if (order->type == SELL && instrument->sell_sl->contains(order)) {
+      std::shared_lock<std::shared_mutex> sl_rlock(instrument->sell_sl->mutex);
       output_time = getCurrentTimestamp();
       instrument->sell_sl->remove(order);
     }
