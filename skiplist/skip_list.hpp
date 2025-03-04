@@ -124,8 +124,6 @@ private:
   }
 
 public:
-  std::shared_mutex mutex;
-
   skip_list(Comp cmp = Comp()) : comp(cmp) {
     auto head_node =
         std::make_shared<Node>(T(), MAX_LEVEL_INDEX, SENTINEL_HEAD);

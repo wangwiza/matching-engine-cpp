@@ -19,7 +19,6 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
   auto is_sell = order->type == SELL;
   assert(count > 0 && !order->cancelled);
   // the instant at which the order was added to the order book
-  std::shared_lock<std::shared_mutex> pq_rlock(pq.mutex);
   uintmax_t output_time = getCurrentTimestamp();
   order->timestamp = output_time;
   pq.add(order);
@@ -39,7 +38,6 @@ template <typename SL>
 bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
   while (active_order->available() && !sl.empty()) {
     std::shared_ptr<order> best_order;
-    std::unique_lock<std::shared_mutex> sl_wlock(sl.mutex);
     try {
       best_order = sl.get_head();
     } catch (std::out_of_range &e) {
@@ -53,7 +51,6 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
       break;
     }
 
-    std::unique_lock<std::mutex> bo_wlock(best_order->mutex);
     // we have to check if the best order is still available
     // since between the time where we decide to fight for
     // this order's write lock and now, this order could have
@@ -92,6 +89,7 @@ void order_book::find_match(std::shared_ptr<order> active_order) {
   }
 
   std::shared_ptr<instrument> instrument = book.get(active_order->instrument);
+  std::unique_lock<std::mutex> lock(instrument->mtx);
   std::shared_ptr<sl_bridge> bridge = instrument->bridge;
   bool fully_filled = false;
   if (active_order->type == SELL) {
@@ -115,21 +113,19 @@ void order_book::find_match(std::shared_ptr<order> active_order) {
 
 void order_book::cancel_order(std::shared_ptr<order> order) {
   bool accepted = false;
+  std::shared_ptr<instrument> instrument = book.get(order->instrument);
+  std::unique_lock<std::mutex> lock(instrument->mtx);
   // need to lock in case the order has become an resting order
-  std::unique_lock<std::mutex> wlock(order->mutex);
   intmax_t output_time = getCurrentTimestamp();
   if (order->available()) {
     order->cancelled = true;
     accepted = true;
     // remove the order from the order book
     // if it is already a resting order
-    std::shared_ptr<instrument> instrument = book.get(order->instrument);
     if (order->type == BUY && instrument->buy_sl->contains(order)) {
-      std::shared_lock<std::shared_mutex> sl_rlock(instrument->buy_sl->mutex);
       output_time = getCurrentTimestamp();
       instrument->buy_sl->remove(order);
     } else if (order->type == SELL && instrument->sell_sl->contains(order)) {
-      std::shared_lock<std::shared_mutex> sl_rlock(instrument->sell_sl->mutex);
       output_time = getCurrentTimestamp();
       instrument->sell_sl->remove(order);
     }

@@ -21,7 +21,6 @@ public:
   uintmax_t timestamp;
   uintmax_t execution_id;
   bool cancelled;
-  std::mutex mutex;
 
   order(uintmax_t id, const char *instrument, uintmax_t price, uintmax_t count,
         order_type type, uintmax_t timestamp)
@@ -75,6 +74,7 @@ public:
   std::shared_ptr<max_sl> buy_sl;
   std::shared_ptr<min_sl> sell_sl;
   std::shared_ptr<sl_bridge> bridge;
+  std::mutex mtx;
 
   instrument()
       : buy_sl(std::make_shared<max_sl>()), sell_sl(std::make_shared<min_sl>()),
