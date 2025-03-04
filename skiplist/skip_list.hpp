@@ -25,10 +25,12 @@ private:
     // following fields are only written to at initialization so no need for
     // atomic
     uint32_t max_level_idx;
+    std::atomic<bool> marked;
+    std::atomic<bool> fully_linked;
     node_type type;
 
     explicit Node(T val, uint32_t lvl_idx, node_type type)
-        : value(val), max_level_idx(lvl_idx), type(type) {
+        : value(val), max_level_idx(lvl_idx), marked(false), fully_linked(false), type(type) {
       // Initialize the vector with max_level atomic shared_ptrs, each
       // containing nullptr
       for (uint32_t i = 0; i < MAX_LEVEL; i++) {
@@ -40,6 +42,7 @@ private:
   std::atomic<std::shared_ptr<Node>> head;
   std::atomic<std::shared_ptr<Node>> tail;
   Comp comp;
+  std::atomic<uintmax_t> size_{0};
 
   bool random_bool() {
     thread_local std::mt19937 rng([] {
@@ -81,6 +84,7 @@ private:
       next = current->next[level].load();
       while (next) {
         if (is_equal(value, next)) {
+          assert(value == next->value);
           return next;
         }
         if (is_less_than(value, next)) {
@@ -128,12 +132,14 @@ public:
     for (uint32_t i = 0; i < MAX_LEVEL; ++i) {
       head_node->next[i].store(tail_node);
     }
+    head_node->fully_linked.store(true);
+    tail_node->fully_linked.store(true);
 
     head.store(std::move(head_node));
     tail.store(std::move(tail_node));
   }
 
-  bool empty() const { return head.load()->next[0].load() == tail.load(); }
+  bool empty() const { return size() == 0; }
 
   // get the smallest element in the skip list
   T &get_head() const {
@@ -141,12 +147,18 @@ public:
       throw std::out_of_range("Skip list is empty");
     }
     std::shared_ptr<Node> result = head.load()->next[0].load();
+    while (result->type != NORMAL || result->marked.load()) {
+      result = result->next[0].load();
+      if (result->type == SENTINEL_TAIL) {
+        throw std::out_of_range("Skip list is empty");
+      }
+    }
     return result->value;
   }
 
   T &get(const T &value) const {
     std::shared_ptr<Node> target = get_node(value);
-    if (!target) {
+    if (target == nullptr || target->marked.load()) {
       throw std::out_of_range("Value not found in skip list");
     }
     return target->value;
@@ -154,10 +166,19 @@ public:
 
   bool contains(const T &value) const {
     std::shared_ptr<Node> target = get_node(value);
-    return target != nullptr;
+    return target != nullptr && !target->marked.load();
   }
 
-  void add(const T &value) {
+  bool add(const T &value) {
+    std::shared_ptr<Node> existing_node = get_node(value);
+    if (existing_node != nullptr && !existing_node->marked.load())
+      return false;
+    if (existing_node != nullptr && existing_node->marked.load()) {
+      // if the node is marked, we will wait for it to be removed
+      while (get_node(value) != nullptr)
+        ;
+    }
+
     uint32_t new_level = random_level();
     std::shared_ptr<Node> new_node =
         std::make_shared<Node>(value, new_level, NORMAL);
@@ -182,6 +203,9 @@ public:
           !valid_next_node ||
           !prev_node->next[level].compare_exchange_weak(next_node, new_node));
     }
+    new_node->fully_linked.store(true);
+    size_.fetch_add(1, std::memory_order_relaxed);
+    return true;
   }
 
   bool remove(const T &value) {
@@ -189,7 +213,19 @@ public:
     if (target == nullptr)
       return false;
 
-    for (int64_t level = target->max_level_idx; level >= 0; level--) {
+    if (!target->fully_linked.load()) {
+      // wait for the node to be fully linked
+      while (!target->marked.load())
+        ;
+    }
+
+    bool expected = false;
+    if (!target->marked.compare_exchange_strong(expected, true)) {
+      // deleted by another thread
+      return false;
+    }
+
+    for (int64_t level = MAX_LEVEL_INDEX; level >= 0; level--) {
       if (target->next[level].load() == nullptr)
         continue;
 
@@ -198,16 +234,17 @@ public:
       while (!prev_node->next[level].compare_exchange_weak(target, next_node)) {
         // reload target since it would've been overwritten
         target = get_node(value);
-        // this means someone else removed the node
-        if (target == nullptr)
-          return false;
         // the prev_node might have changed, so we need to find it again
         prev_node = get_preceding_node(value, level);
+        // target's next node might have changed as well
         next_node = target->next[level].load();
       }
     }
+    size_.fetch_sub(1, std::memory_order_relaxed);
     return true;
   }
+
+  uintmax_t size() const { return size_.load(std::memory_order_acquire); }
 
   // for debugging purposes
   void display_node(const std::shared_ptr<Node> &node) {

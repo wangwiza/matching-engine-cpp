@@ -18,7 +18,6 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
   auto count = order->count;
   auto is_sell = order->type == SELL;
   assert(count > 0 && !order->cancelled);
-  order->resting = true;
   // the instant at which the order was added to the order book
   uintmax_t output_time = getCurrentTimestamp();
   order->timestamp = output_time;
@@ -122,17 +121,13 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
     accepted = true;
     // remove the order from the order book
     // if it is already a resting order
-    if (order->resting) {
-      std::shared_ptr<instrument> instrument = book.get(order->instrument);
-      bool removed = false;
+    std::shared_ptr<instrument> instrument = book.get(order->instrument);
+    if (order->type == BUY && instrument->buy_sl->contains(order)) {
       output_time = getCurrentTimestamp();
-      if (order->type == BUY) {
-        removed = instrument->buy_sl->remove(order);
-      } else {
-        removed = instrument->sell_sl->remove(order);
-      }
-      // removal should always be successful
-      assert(removed);
+      instrument->buy_sl->remove(order);
+    } else if (order->type == SELL && instrument->sell_sl->contains(order)) {
+      output_time = getCurrentTimestamp();
+      instrument->sell_sl->remove(order);
     }
   }
   // instant that cancel was accepted or rejected

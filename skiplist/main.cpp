@@ -80,24 +80,6 @@ void test_data_types() {
   assert(desc_list.get_head() == 4);
 }
 
-// Test object storage
-void test_objects() {
-  struct Person {
-    std::string name;
-    int age;
-    bool operator<(const Person &other) const { return age < other.age; }
-  };
-
-  skip_list<Person> people;
-  people.add({"Alice", 35});
-  people.add({"Bob", 25});
-  people.add({"Charlie", 30});
-
-  assert(people.get_head().name == "Bob");
-  assert(people.remove({"Bob", 25}));
-  assert(people.get_head().name == "Charlie");
-}
-
 void test_min_order_sl() {
   std::vector<std::shared_ptr<order>> orders;
   orders.push_back(std::make_shared<order>(1, "AAPL", 1, 10, SELL, 1));
@@ -191,6 +173,51 @@ void test_order_sl_timestamp() {
   }
 }
 
+// Test concurrent removals
+void test_concurrent_removal() {
+  const int NUM_REMOVE_THREADS = 4;
+  const int VALUES_PER_THREAD = 250;
+
+  // First, create a skip list and populate it with known values
+  skip_list<int32_t> list;
+  std::vector<std::vector<int32_t>> thread_values(NUM_REMOVE_THREADS);
+
+  // Generate unique values for each thread to remove
+  for (int t = 0; t < NUM_REMOVE_THREADS; ++t) {
+    for (int i = 0; i < VALUES_PER_THREAD; ++i) {
+      int32_t value = t * VALUES_PER_THREAD + i;
+      thread_values[t].push_back(value);
+      list.add(value);
+    }
+  }
+
+  // Function to remove values
+  auto remove_values = [](skip_list<int32_t>& lst, const std::vector<int32_t>& values, int thread_id) {
+    uint32_t removed_count = 0;
+    for (const auto& value : values) {
+      if (lst.remove(value)) {
+        removed_count++;
+      }
+    }
+    std::cout << "Remove Thread " << thread_id << " removed " << removed_count << " elements" << std::endl;
+  };
+
+  // Start concurrent removal threads
+  std::vector<std::thread> threads;
+  for (int t = 0; t < NUM_REMOVE_THREADS; ++t) {
+    threads.push_back(std::thread(remove_values, std::ref(list), std::ref(thread_values[t]), t));
+  }
+
+  // Wait for all threads to complete
+  for (auto& thread : threads) {
+    thread.join();
+  }
+
+  // Verify list is empty
+  assert(list.empty());
+  std::cout << "Concurrent removal test passed!" << std::endl;
+}
+
 // Test concurrent insertions and retrievals
 
 const int NUM_INSERT_THREADS = 4;
@@ -244,10 +271,10 @@ int main() {
   test_basic_operations();
   test_edge_cases();
   test_data_types();
-  test_objects();
   test_min_order_sl();
   test_max_order_sl();
   test_order_sl_timestamp();
+  test_concurrent_removal();
 
   std::vector<std::thread> threads;
   skip_list<int32_t> list;

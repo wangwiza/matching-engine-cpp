@@ -21,14 +21,12 @@ public:
   uintmax_t timestamp;
   uintmax_t execution_id;
   bool cancelled;
-  bool resting;
   std::mutex mutex;
 
   order(uintmax_t id, const char *instrument, uintmax_t price, uintmax_t count,
         order_type type, uintmax_t timestamp)
       : id(id), instrument(std::string(instrument)), price(price), count(count),
-        type(type), timestamp(timestamp), execution_id(1), cancelled(false),
-        resting(false) {}
+        type(type), timestamp(timestamp), execution_id(1), cancelled(false) {}
 
   bool available() { return (!cancelled) && count > 0; }
 
@@ -38,12 +36,17 @@ public:
        << order.execution_id << " " << order.cancelled;
     return os;
   }
+
+  bool operator==(const order &other) const { return id == other.id; }
 };
 
 // Comparator for low price (min-heap)
 struct MinPriceComparator {
   bool operator()(std::shared_ptr<order> a, std::shared_ptr<order> b) const {
     if (a->price == b->price) {
+      if (a->timestamp == b->timestamp) {
+        return a->id < b->id;
+      }
       return a->timestamp < b->timestamp;
     }
     return a->price < b->price;
@@ -54,6 +57,9 @@ struct MinPriceComparator {
 struct MaxPriceComparator {
   bool operator()(std::shared_ptr<order> a, std::shared_ptr<order> b) const {
     if (a->price == b->price) {
+      if (a->timestamp == b->timestamp) {
+        return a->id < b->id;
+      }
       return a->timestamp < b->timestamp;
     }
     return a->price > b->price;
