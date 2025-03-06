@@ -12,17 +12,13 @@ bool price_matched(std::shared_ptr<order> active_order,
 
 template <typename PQ>
 void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
-  auto id = order->id;
-  auto instrument = order->instrument;
-  auto price = order->price;
-  auto count = order->count;
-  auto is_sell = order->type == SELL;
-  assert(count > 0 && !order->cancelled);
+  bool is_sell = order->type == SELL;
   // the instant at which the order was added to the order book
   uintmax_t output_time = getCurrentTimestamp();
   order->timestamp = output_time;
   pq.add(order);
-  Output::OrderAdded(id, instrument, price, count, is_sell, output_time);
+  Output::OrderAdded(order->id, order->instrument, order->price, order->count,
+                     is_sell, output_time);
 }
 
 void order_book::add_order(std::shared_ptr<order> active_order) {
@@ -37,27 +33,14 @@ void order_book::add_order(std::shared_ptr<order> active_order) {
 template <typename SL>
 bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
   while (active_order->available() && !sl.empty()) {
-    std::shared_ptr<order> best_order;
-    try {
-      best_order = sl.get_head();
-    } catch (std::out_of_range &e) {
-      // this may happen since there is time between
-      // the time we check if the SL is empty and the
-      // time we actually get the head
-      break;
-    }
+    // if we are able to get the order, it is guaranteed to be available
+    std::shared_ptr<order> best_order = sl.get_head();
+
     // price is read-only, so we don't need to lock the best order
     if (!price_matched(active_order, best_order)) {
       break;
     }
 
-    // we have to check if the best order is still available
-    // since between the time where we decide to fight for
-    // this order's write lock and now, this order could have
-    // become unavailabe
-    if (!best_order->available()) {
-      continue;
-    }
     // instant at which the AO was matched with the best order and
     // the order book was updated
     uintmax_t output_time = getCurrentTimestamp();
@@ -74,8 +57,7 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
     if (best_order->count == 0) {
       // this should succeed since we are the first
       // to see count == 0
-      bool removed = sl.remove(best_order);
-      assert(removed);
+      assert(sl.remove(best_order));
     }
   }
 
@@ -90,24 +72,16 @@ void order_book::find_match(std::shared_ptr<order> active_order) {
 
   std::shared_ptr<instrument> instrument = book.get(active_order->instrument);
   std::unique_lock<std::mutex> lock(instrument->mtx);
-  std::shared_ptr<sl_bridge> bridge = instrument->bridge;
   bool fully_filled = false;
   if (active_order->type == SELL) {
-    bridge->enter_sell();
     fully_filled = try_fill_order(*instrument->buy_sl, active_order);
   } else {
-    bridge->enter_buy();
     fully_filled = try_fill_order(*instrument->sell_sl, active_order);
   }
 
   // turn the AO into a RO
   if (!fully_filled) {
     add_order(active_order);
-  }
-  if (active_order->type == SELL) {
-    bridge->exit_sell();
-  } else {
-    bridge->exit_buy();
   }
 }
 
@@ -134,6 +108,7 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
   Output::OrderDeleted(order->id, accepted, output_time);
 }
 
+// Debugging functions
 void order_book::print_instr_top(const std::string &instrument_str) {
   if (!book.contains(instrument_str)) {
     std::cerr << "instrument not found: " << instrument_str << std::endl;

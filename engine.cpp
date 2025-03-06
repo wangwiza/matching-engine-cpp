@@ -29,19 +29,11 @@ void Engine::connection_thread(ClientConnection connection) {
       break;
     }
 
-    // Functions for printing output actions in the prescribed format are
-    // provided in the Output class:
     switch (input.type) {
     // Finally, order cancel requests can only come from the client that
     // originally sent the order – that is, a client cannot cancel an order that
     // did not originate from itself.
     case input_cancel: {
-      /*SyncCerr{} << "Got cancel: ID: " << input.order_id << std::endl;*/
-
-      // Remember to take timestamp at the appropriate time, or compute
-      // an appropriate timestamp!
-      /*auto output_time = getCurrentTimestamp();*/
-      /*Output::OrderDeleted(input.order_id, true, output_time);*/
       auto search = client_orders.find(input.order_id);
       if (search == client_orders.end()) {
         // order not found
@@ -56,10 +48,6 @@ void Engine::connection_thread(ClientConnection connection) {
 
     case input_buy:
     case input_sell: {
-      /*SyncCerr{} << "Got sell order: " << static_cast<char>(input.type) << "
-       * "*/
-      /*           << input.instrument << " x " << input.count << " @ "*/
-      /*           << input.price << " ID: " << input.order_id << std::endl;*/
       auto order_type = input.type == input_sell ? SELL : BUY;
       auto timestamp = static_cast<uintmax_t>(getCurrentTimestamp());
       std::shared_ptr<order> ptr =
@@ -69,12 +57,6 @@ void Engine::connection_thread(ClientConnection connection) {
       order_book.find_match(ptr);
       break;
     }
-
-      /*default: {*/
-      /*    SyncCerr {} << "Unknown command type: " <<
-       * static_cast<char>(input.type) << std::endl;*/
-      /*    break;*/
-      /*}*/
     }
   }
 }

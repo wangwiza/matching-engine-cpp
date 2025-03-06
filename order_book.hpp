@@ -2,12 +2,9 @@
 
 #include "hashmap/hash_map.hpp"
 #include "skiplist/skip_list.hpp"
-#include "sl_bridge.hpp"
 #include <memory>
 #include <mutex>
 #include <ostream>
-#include <shared_mutex>
-#include <stdexcept>
 
 enum order_type { BUY, SELL };
 
@@ -73,12 +70,11 @@ class instrument {
 public:
   std::shared_ptr<max_sl> buy_sl;
   std::shared_ptr<min_sl> sell_sl;
-  std::shared_ptr<sl_bridge> bridge;
   std::mutex mtx;
 
   instrument()
-      : buy_sl(std::make_shared<max_sl>()), sell_sl(std::make_shared<min_sl>()),
-        bridge(std::make_shared<sl_bridge>()) {}
+      : buy_sl(std::make_shared<max_sl>()),
+        sell_sl(std::make_shared<min_sl>()) {}
 };
 
 class order_book {
