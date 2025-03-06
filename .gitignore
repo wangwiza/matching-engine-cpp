@@ -1,6 +1,6 @@
 engine
 client
-/build
+build/
 /.deps
 compile_commands.json
 .cache
