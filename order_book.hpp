@@ -1,10 +1,10 @@
 #pragma once
 
 #include "hashmap/hash_map.hpp"
-#include "skiplist/skip_list.hpp"
 #include <memory>
 #include <mutex>
 #include <ostream>
+#include <set>
 
 enum order_type { BUY, SELL };
 
@@ -63,18 +63,18 @@ struct MaxPriceComparator {
 };
 
 // Define specific types for each comparator
-using min_sl = skip_list<std::shared_ptr<order>, MinPriceComparator>;
-using max_sl = skip_list<std::shared_ptr<order>, MaxPriceComparator>;
+using min_pq = std::set<std::shared_ptr<order>, MinPriceComparator>;
+using max_pq = std::set<std::shared_ptr<order>, MaxPriceComparator>;
 
 class instrument {
 public:
-  std::shared_ptr<max_sl> buy_sl;
-  std::shared_ptr<min_sl> sell_sl;
+  std::shared_ptr<max_pq> buy_pq;
+  std::shared_ptr<min_pq> sell_pq;
   std::mutex mtx;
 
   instrument()
-      : buy_sl(std::make_shared<max_sl>()),
-        sell_sl(std::make_shared<min_sl>()) {}
+      : buy_pq(std::make_shared<max_pq>()),
+        sell_pq(std::make_shared<min_pq>()) {}
 };
 
 class order_book {

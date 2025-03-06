@@ -16,7 +16,7 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
   // the instant at which the order was added to the order book
   uintmax_t output_time = getCurrentTimestamp();
   order->timestamp = output_time;
-  pq.add(order);
+  pq.insert(order);
   Output::OrderAdded(order->id, order->instrument, order->price, order->count,
                      is_sell, output_time);
 }
@@ -24,17 +24,17 @@ void add_order_helper(PQ &pq, std::shared_ptr<order> order) {
 void order_book::add_order(std::shared_ptr<order> active_order) {
   std::shared_ptr<instrument> instrument = book.get(active_order->instrument);
   if (active_order->type == BUY) {
-    add_order_helper(*instrument->buy_sl, active_order);
+    add_order_helper(*instrument->buy_pq, active_order);
   } else {
-    add_order_helper(*instrument->sell_sl, active_order);
+    add_order_helper(*instrument->sell_pq, active_order);
   }
 }
 
-template <typename SL>
-bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
-  while (active_order->available() && !sl.empty()) {
+template <typename PQ>
+bool try_fill_order(PQ &pq, std::shared_ptr<order> active_order) {
+  while (active_order->available() && !pq.empty()) {
     // if we are able to get the order, it is guaranteed to be available
-    std::shared_ptr<order> best_order = sl.get_head();
+    std::shared_ptr<order> best_order = *pq.begin();
 
     // price is read-only, so we don't need to lock the best order
     if (!price_matched(active_order, best_order)) {
@@ -57,7 +57,7 @@ bool try_fill_order(SL &sl, std::shared_ptr<order> active_order) {
     if (best_order->count == 0) {
       // this should succeed since we are the first
       // to see count == 0
-      assert(sl.remove(best_order));
+      assert(pq.erase(best_order));
     }
   }
 
@@ -74,12 +74,11 @@ void order_book::find_match(std::shared_ptr<order> active_order) {
   std::unique_lock<std::mutex> lock(instrument->mtx);
   bool fully_filled = false;
   if (active_order->type == SELL) {
-    fully_filled = try_fill_order(*instrument->buy_sl, active_order);
+    fully_filled = try_fill_order(*instrument->buy_pq, active_order);
   } else {
-    fully_filled = try_fill_order(*instrument->sell_sl, active_order);
+    fully_filled = try_fill_order(*instrument->sell_pq, active_order);
   }
 
-  // turn the AO into a RO
   if (!fully_filled) {
     add_order(active_order);
   }
@@ -89,19 +88,16 @@ void order_book::cancel_order(std::shared_ptr<order> order) {
   bool accepted = false;
   std::shared_ptr<instrument> instrument = book.get(order->instrument);
   std::unique_lock<std::mutex> lock(instrument->mtx);
-  // need to lock in case the order has become an resting order
   intmax_t output_time = getCurrentTimestamp();
   if (order->available()) {
     order->cancelled = true;
     accepted = true;
-    // remove the order from the order book
-    // if it is already a resting order
-    if (order->type == BUY && instrument->buy_sl->contains(order)) {
+    if (order->type == BUY && instrument->buy_pq->contains(order)) {
       output_time = getCurrentTimestamp();
-      instrument->buy_sl->remove(order);
-    } else if (order->type == SELL && instrument->sell_sl->contains(order)) {
+      instrument->buy_pq->erase(order);
+    } else if (order->type == SELL && instrument->sell_pq->contains(order)) {
       output_time = getCurrentTimestamp();
-      instrument->sell_sl->remove(order);
+      instrument->sell_pq->erase(order);
     }
   }
   // instant that cancel was accepted or rejected
@@ -115,18 +111,18 @@ void order_book::print_instr_top(const std::string &instrument_str) {
     return;
   }
   std::shared_ptr<instrument> instrument = book.get(instrument_str);
-  std::shared_ptr<max_sl> max_pq = instrument->buy_sl;
+  std::shared_ptr<max_pq> max_pq = instrument->buy_pq;
   if (max_pq->empty()) {
     std::cerr << instrument_str << " BUY  top: empty" << std::endl;
   } else {
-    std::cerr << instrument_str << " BUY  top: " << *max_pq->get_head()
+    std::cerr << instrument_str << " BUY  top: " << *max_pq->begin()
               << std::endl;
   }
-  std::shared_ptr<min_sl> min_pq = instrument->sell_sl;
+  std::shared_ptr<min_pq> min_pq = instrument->sell_pq;
   if (min_pq->empty()) {
     std::cerr << instrument_str << " SELL top: empty" << std::endl;
   } else {
-    std::cerr << instrument_str << " SELL top: " << *min_pq->get_head()
+    std::cerr << instrument_str << " SELL top: " << *min_pq->begin()
               << std::endl;
   }
 }
