@@ -127,7 +127,10 @@ due to the mutex at the instrument level.
 
 \section{Testing Methodology}\label{sec:Testing Methodology} % (fold)
 
-For testing we wrote a python script that generates random input files for the grader and we run it
+For testing of our concurrent hashmap, we wrote a test program that asserts the correctness of the
+hashmap under both single-threaded and multi-threaded scenarios.
+
+For testing of the engine, we wrote a python script that generates random input files for the grader and we run it
 continuously check for any test failures. The python script is in \texttt{scripts} directory. We also ran the grader with Thread Sanitizer to check for data race.
 
 % section Testing Methodology (end)
