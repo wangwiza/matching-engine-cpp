@@ -131,7 +131,12 @@ For testing of our concurrent hashmap, we wrote a test program that asserts the 
 hashmap under both single-threaded and multi-threaded scenarios.
 
 For testing of the engine, we wrote a python script that generates random input files for the grader and we run it
-continuously check for any test failures. The python script is in \texttt{scripts} directory. We also ran the grader with Thread Sanitizer to check for data race.
+continuously check for any test failures. The generate input files of different sizes, from 4 to 40
+clients and up to 40000 orders. It is ran for $> 100$ iterations for large cases and $> 1000$
+iterations for medium size cases to ensure the engine is likely to be correct.
+The python script is in \texttt{scripts} directory. We
+also ran our engine with \texttt{tsan}, \texttt{asan}, \texttt{msan} and \texttt{valgrind} to check
+for data races and memory related bugs.
 
 % section Testing Methodology (end)
 
