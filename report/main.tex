@@ -1,0 +1,144 @@
+\documentclass[11pt]{article}
+\usepackage[a4paper, total={18cm, 26cm}]{geometry}
+\linespread{1.15}
+
+\title{CS3211 Assignment 1}
+\author{David Zhu (E0958755), William (E1496974)}
+\date{AY24/25 Semester 2}
+
+\input{preamble.tex}
+
+\begin{document}
+
+\maketitle
+
+\section{Data Structures}\label{sec:Data Structures} % (fold)
+
+In this section we discuss the data structures used in the implementation of the exchange.
+
+\subsection{Concurrent Hashmap}\label{sub:Concurrent Hashmap} % (fold)
+
+The idea of this concurrent hashmap is to use separate-chaining with a linked list to handle hash
+collisions. We call each linked list a bucket. Accessing different buckets concurrently is safe
+as they are different memory locations. Each bucket has its own \texttt{shared\_mutex} to
+allow concurrent access to it. The hashmap also has a \texttt{rehash\_mutex} to lock the entire
+hashmap when resizing it.
+
+\begin{figure}[H]
+    \begin{center}
+\begin{lstlisting}[language=c++]
+template <typename K, typename V> class HashMap {
+  using Bucket = std::list<std::pair<K, V>>;
+  std::vector<Bucket> buckets;
+  std::vector<std::shared_mutex> bucket_mutexes;
+  std::atomic<size_t> num_elements;
+  std::shared_mutex rehash_mutex;
+  float max_load_factor = DEFAULT_LOAD_FACTOR;
+};
+\end{lstlisting}
+    \end{center}
+    \caption{HashMap Fields}\label{imp:fig:HashMapFields}
+\end{figure}
+
+\subsubsection{Bucket-level Locking}
+Each bucket employs a dedicated \texttt{shared\_mutex} for synchronization. Read operations (\texttt{contains}, \texttt{get}) use shared locks (\texttt{shared\_lock}) allowing concurrent access, while write operations (\texttt{insert}, \texttt{remove}) utilize exclusive locks (\texttt{unique\_lock}) for mutual exclusion. This fine-grained approach enables simultaneous access to different buckets, with contention limited to concurrent accesses within the same bucket.
+
+\subsubsection{Rehashing}
+Table resizing is guarded by a global \texttt{shared\_mutex} (\texttt{rehash\_mutex}). Normal
+operations acquire it in shared mode, while rehashing requires exclusive access. During rehashing, this mutex is locked exclusively after releasing all bucket locks, temporarily blocking new operations but ensuring safe bucket redistribution. The two-phase locking (release bucket locks before acquiring rehash lock) prevents deadlocks during capacity expansion.
+
+\subsubsection{Size Tracking}
+The element count is maintained through an \texttt{atomic<size\_t>} counter (\texttt{num\_elements}), enabling thread-safe size queries without explicit locking.
+
+% subsection Concurrent Hashmap (end)
+
+\subsection{Priority Queue}\label{sub:Priority Queue} % (fold)
+This priority queue is implemented using \verb|std::set| with two custom comparator that
+compares the price of the buy orders and sell orders respectively. Buy orders are sorted from
+highest to lowest price, while sell orders are sorted from lowest to highest price. We chose
+\verb|std::set| instead of \verb|std::priority_queue| because we need to be able to remove specific
+orders from the priority queue to support cancel operations. The priority queue is not thread safe
+and is protected by a mutex at the instrument level.
+
+% subsection Priority Queue (end)
+
+% section Data Structures (end)
+
+\section{Exchange Implementation}\label{sec:Exchange Implementation} % (fold)
+
+To store instrument data, we utilize a custom concurrent \texttt{HashMap} implementation. The structure of the \texttt{HashMap} is as follows:
+
+\begin{itemize}
+    \item \textbf{Key}: The name of the instrument.
+    \item \textbf{Value}: The \texttt{Instrument} class, which contains:
+    \begin{itemize}
+        \item Two priority queues: one for buy orders and one for sell orders.
+        \item A mutex to ensure thread-safe access to the order data.
+    \end{itemize}
+\end{itemize}
+
+Each instrument's data is protected by its own mutex. This ensures that only one thread can access the priority queues (buy and sell orders) for a specific instrument at any given time.
+
+\subsection{Buy/Sell Order Handling}\label{sub:Buy/Sell Order Handling} % (fold)
+
+For brevity, we will go through how we handle buy orders, the handling of sell orders is the same
+but against the opposite order type.
+
+When a buy order is received, we first check if the instrument exists in the \texttt{HashMap}. If it
+does not, we create a new \texttt{Instrument} object and insert it into the \texttt{HashMap}. These
+operations are thread-safe thanks to our concurrent \texttt{HashMap} implementation.
+
+We then acquire the instrument's mutex to ensure exclusive access to the order data. Next, check
+if the buy order is price compatible with the best sell order in the instrument's sell queue.
+
+\textbf{Case 1: Price compatible} \\
+Then we execute the maximum possible quantity between the two orders. While the buy order is not
+filled and the sell queue is not empty, we continue to match it against the best sell orders in the queue.
+After this order matching process, we check if the buy order is fully filled. If it is not, we add
+the remaining quantity to the buy queue.
+
+\textbf{Case 2: Not price compatible} \\
+Then we can conclude that the buy order cannot be executed. We add the buy order to the buy queue.
+
+% subsection Buy/Sell Order Handling (end)
+
+\subsection{Cancel Order Handling}\label{sub:Cancel Order Handling} % (fold)
+
+For cancel order handling, we store a shared pointer to the order in a thread local hashmap in the
+client for all the buy/sell orders we receive. This
+allows us to quickly access the order to be cancelled without having to search through the priority
+queue. When a cancel order is received, we first check if the order exists in the thread local
+hashmap. If it does, then we acquire the instrument lock and check if the order is still available (i.e. not yet fully filled or
+cancelled). If the order is still available, we remove it from the priority queue and reply with
+accepted. If the order is not available, we reply with rejected.
+
+% subsection Cancel Order Handling (end)
+
+% section Exchange Implementation (end)
+
+\section{Concurrency Level}\label{sec:Concurrency Level} % (fold)
+
+The concurrency level of our implementation is instrument level. As the \verb|HashMap| can be
+accessed concurrently by multiple threads, allowing multiple instruments to be processed
+concurrently. However, within an instrument, only one thread can access the order data at a time
+due to the mutex at the instrument level.
+
+% section Concurrency Level (end)
+
+\section{Testing Methodology}\label{sec:Testing Methodology} % (fold)
+
+For testing of our concurrent hashmap, we wrote a test program that asserts the correctness of the
+hashmap under both single-threaded and multi-threaded scenarios.
+
+For testing of the engine, we wrote a python script that generates random input files for the grader and we run it
+continuously check for any test failures. The generate input files of different sizes, from 4 to 40
+clients and up to 40000 orders. It is ran for $> 100$ iterations for large cases and $> 1000$
+iterations for medium size cases to ensure the engine is likely to be correct.
+The python script is in \texttt{scripts} directory. We
+also ran our engine with \texttt{tsan}, \texttt{asan}, \texttt{msan} and \texttt{valgrind} to check
+for data races and memory related bugs.
+
+% section Testing Methodology (end)
+
+\end{document}
+
