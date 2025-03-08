@@ -1,12 +1,10 @@
 #pragma once
 
 #include "hashmap/hash_map.hpp"
-#include "skiplist/skip_list.hpp"
 #include <memory>
 #include <mutex>
 #include <ostream>
-#include <shared_mutex>
-#include <stdexcept>
+#include <set>
 
 enum order_type { BUY, SELL };
 
@@ -20,14 +18,11 @@ public:
   uintmax_t timestamp;
   uintmax_t execution_id;
   bool cancelled;
-  bool resting;
-  std::mutex mutex;
 
   order(uintmax_t id, const char *instrument, uintmax_t price, uintmax_t count,
         order_type type, uintmax_t timestamp)
       : id(id), instrument(std::string(instrument)), price(price), count(count),
-        type(type), timestamp(timestamp), execution_id(1), cancelled(false),
-        resting(false) {}
+        type(type), timestamp(timestamp), execution_id(1), cancelled(false) {}
 
   bool available() { return (!cancelled) && count > 0; }
 
@@ -37,12 +32,17 @@ public:
        << order.execution_id << " " << order.cancelled;
     return os;
   }
+
+  bool operator==(const order &other) const { return id == other.id; }
 };
 
 // Comparator for low price (min-heap)
 struct MinPriceComparator {
   bool operator()(std::shared_ptr<order> a, std::shared_ptr<order> b) const {
     if (a->price == b->price) {
+      if (a->timestamp == b->timestamp) {
+        return a->id < b->id;
+      }
       return a->timestamp < b->timestamp;
     }
     return a->price < b->price;
@@ -53,6 +53,9 @@ struct MinPriceComparator {
 struct MaxPriceComparator {
   bool operator()(std::shared_ptr<order> a, std::shared_ptr<order> b) const {
     if (a->price == b->price) {
+      if (a->timestamp == b->timestamp) {
+        return a->id < b->id;
+      }
       return a->timestamp < b->timestamp;
     }
     return a->price > b->price;
@@ -60,15 +63,24 @@ struct MaxPriceComparator {
 };
 
 // Define specific types for each comparator
-using min_sl = skip_list<std::shared_ptr<order>, MinPriceComparator>;
-using max_sl = skip_list<std::shared_ptr<order>, MaxPriceComparator>;
+using min_pq = std::set<std::shared_ptr<order>, MinPriceComparator>;
+using max_pq = std::set<std::shared_ptr<order>, MaxPriceComparator>;
+
+class instrument {
+public:
+  std::shared_ptr<max_pq> buy_pq;
+  std::shared_ptr<min_pq> sell_pq;
+  std::mutex mtx;
+
+  instrument()
+      : buy_pq(std::make_shared<max_pq>()),
+        sell_pq(std::make_shared<min_pq>()) {}
+};
 
 class order_book {
 private:
   // max_pq for buy orders, min_pq for sell orders
-  HashMap<std::string,
-          std::pair<std::shared_ptr<max_sl>, std::shared_ptr<min_sl>>>
-      book;
+  HashMap<std::string, std::shared_ptr<instrument>> book;
 
 public:
   void add_order(std::shared_ptr<order> order);
